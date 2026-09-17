@@ -424,6 +424,94 @@ async function sendTelegramVoice(
 
 /* =========================
 
+   Telegram API Authentication
+
+========================= */
+
+function telegramApiAuth(req, res, next) {
+
+  if (!TELEGRAM_API_KEY) {
+
+    return res.status(500).json({
+
+      ok: false,
+
+      error: "TELEGRAM_API_KEY is not configured."
+
+    });
+
+  }
+
+  const header =
+
+    req.headers.authorization || "";
+
+  const token =
+
+    header.startsWith("Bearer ")
+
+      ? header.slice(7)
+
+      : null;
+
+  if (token !== TELEGRAM_API_KEY) {
+
+    return res.status(401).json({
+
+      ok: false,
+
+      error: "Unauthorized"
+
+    });
+
+  }
+
+  next();
+
+}
+
+/* =========================
+
+   MCP Authentication
+
+========================= */
+
+function mcpAuth(req, res, next) {
+
+  if (!AUTH_TOKEN) {
+
+    return next();
+
+  }
+
+  const header =
+
+    req.headers.authorization || "";
+
+  const token =
+
+    header.startsWith("Bearer ")
+
+      ? header.slice(7)
+
+      : null;
+
+  if (token !== AUTH_TOKEN) {
+
+    return res.status(401).json({
+
+      error: "Unauthorized"
+
+    });
+
+  }
+
+  next();
+
+}
+
+/* =========================
+
    MCP
 
 ========================= */
@@ -436,7 +524,7 @@ function buildServer() {
 
       name: "telegram-notify",
 
-      version: "1.2.0"
+      version: "1.3.0"
 
     });
 
@@ -712,7 +800,11 @@ app.get(
 
       service: "telegram-gpt",
 
-      mcp: "/mcp"
+      mcp: "/mcp",
+
+      telegram_text: "/telegram/send",
+
+      telegram_voice: "/telegram/voice"
 
     });
 
@@ -722,57 +814,7 @@ app.get(
 
 /* =========================
 
-   MCP Authentication
-
-========================= */
-
-app.use(
-
-  (req, res, next) => {
-
-    if (!AUTH_TOKEN) {
-
-      return next();
-
-    }
-
-    const header =
-
-      req.headers.authorization || "";
-
-    const token =
-
-      header.startsWith("Bearer ")
-
-        ? header.slice(7)
-
-        : null;
-
-    if (token !== AUTH_TOKEN) {
-
-      return res
-
-        .status(401)
-
-        .json({
-
-          error: "Unauthorized"
-
-        });
-
-    }
-
-    next();
-
-  }
-
-);
-
-/* =========================
-
-   NEW:
-
-   Telegram HTTP API
+   Telegram Text HTTP API
 
 ========================= */
 
@@ -780,47 +822,11 @@ app.post(
 
   "/telegram/send",
 
+  telegramApiAuth,
+
   async (req, res) => {
 
     try {
-
-      /* API key protection */
-
-      if (TELEGRAM_API_KEY) {
-
-        const header =
-
-          req.headers.authorization || "";
-
-        const token =
-
-          header.startsWith("Bearer ")
-
-            ? header.slice(7)
-
-            : null;
-
-        if (
-
-          token !== TELEGRAM_API_KEY
-
-        ) {
-
-          return res
-
-            .status(401)
-
-            .json({
-
-              ok: false,
-
-              error: "Unauthorized"
-
-            });
-
-        }
-
-      }
 
       const {
 
@@ -846,9 +852,7 @@ app.post(
 
             ok: false,
 
-            error:
-
-              "text is required"
+            error: "text is required"
 
           });
 
@@ -898,9 +902,135 @@ app.post(
 
           ok: false,
 
-          error:
+          error: error.message
 
-            error.message
+        });
+
+    }
+
+  }
+
+);
+
+/* =========================
+
+   Telegram Voice HTTP API
+
+========================= */
+
+app.post(
+
+  "/telegram/voice",
+
+  telegramApiAuth,
+
+  async (req, res) => {
+
+    try {
+
+      const {
+
+        text,
+
+        chat_id
+
+      } = req.body;
+
+      if (
+
+        !text ||
+
+        typeof text !== "string"
+
+      ) {
+
+        return res
+
+          .status(400)
+
+          .json({
+
+            ok: false,
+
+            error: "text is required"
+
+          });
+
+      }
+
+      console.log(
+
+        `[telegram/voice] Generating voice: ${text}`
+
+      );
+
+      // 1. ElevenLabs 生成 MP3
+
+      const mp3 =
+
+        await textToSpeechMp3(
+
+          text
+
+        );
+
+      // 2. MP3 转 OGG/Opus
+
+      const ogg =
+
+        await mp3ToOggOpus(
+
+          mp3
+
+        );
+
+      // 3. 发送 Telegram
+
+      const result =
+
+        await sendTelegramVoice(
+
+          ogg,
+
+          chat_id
+
+        );
+
+      return res.json({
+
+        ok: true,
+
+        message_id:
+
+          result.result?.message_id,
+
+        chat_id:
+
+          chat_id ||
+
+          DEFAULT_CHAT_ID
+
+      });
+
+    } catch (error) {
+
+      console.error(
+
+        "[telegram/voice]",
+
+        error
+
+      );
+
+      return res
+
+        .status(500)
+
+        .json({
+
+          ok: false,
+
+          error: error.message
 
         });
 
@@ -919,6 +1049,8 @@ app.post(
 app.post(
 
   "/mcp",
+
+  mcpAuth,
 
   async (req, res) => {
 
