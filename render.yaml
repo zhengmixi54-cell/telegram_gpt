@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: telegram-mcp-voice
+    runtime: docker
+    plan: free
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        sync: false
+      - key: MCP_API_TOKEN
+        generateValue: true
